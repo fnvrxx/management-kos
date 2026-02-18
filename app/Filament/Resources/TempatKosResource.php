@@ -1,0 +1,118 @@
+<?php
+
+namespace App\Filament\Resources;
+
+use App\Filament\Resources\TempatKosResource\Pages;
+use App\Filament\Resources\TempatKosResource\RelationManagers;
+use App\Models\TempatKos;
+use Carbon\Carbon;
+
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
+
+class TempatKosResource extends Resource
+{
+    protected static ?string $model = TempatKos::class;
+    protected static ?int $navigationSort = 3;
+    protected static ?string $navigationGroup = 'Data Master'; // Kelompokkan biar rapi
+    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+
+    public static function form(Form $form): Form
+    {
+        return $form
+            ->schema([
+                Forms\Components\Select::make('lokasi')
+                    ->options([
+                        'Malang' => 'Malang',
+                        'Surabaya' => 'Surabaya',
+                        'Kediri' => 'Kediri',
+                    ])
+                    ->required(),
+                Forms\Components\TextInput::make('nomor_kamar')->required(),
+                // Kode Unik is auto-generated, so we don't show it or make it disabled
+                Forms\Components\Select::make('id_penyewa')
+                    ->relationship('penyewa', 'nama_lengkap')
+                    ->label('Nama Penyewa')
+                    ->searchable()
+                    ->preload()
+                    // VALIDASI TAMBAHAN:
+                    // Pastikan satu orang tidak bisa menempati 2 kamar sekaligus
+                    ->unique(ignoreRecord: true)
+
+                    // OPSI TAMBAHAN (Hanya tampilkan penyewa yang BELUM punya kamar)
+                    ->options(function () {
+                        return \App\Models\Penyewa::whereDoesntHave('tempatKos')
+                            ->where(fn($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))
+                            ->pluck('nama_lengkap', 'id');
+                    }),
+                Forms\Components\Select::make('id_transaksi')
+                    ->relationship('transaksi', 'id') // Assuming you select ID or formatted string
+                    ->label('Latest Transaction ID'),
+            ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                Tables\Columns\TextColumn::make('lokasi')
+                    ->sortable()
+                    ->badge(), // Biar ada warnanya dikit
+
+                Tables\Columns\TextColumn::make('kode_unik')
+                    ->label('Kode Unik')
+                    ->copyable(), // Biar bisa dicopy admin
+
+                Tables\Columns\TextColumn::make('nomor_kamar'),
+
+                Tables\Columns\TextColumn::make('penyewa.nama_lengkap')
+                    ->label('Penghuni')
+                    ->searchable(),
+
+                // Re-use logika status bayar di tabel ini juga
+                Tables\Columns\TextColumn::make('status')
+                    ->label('Status Bayar')
+                    ->getStateUsing(function ($record) {
+                        if (!$record->transaksi)
+                            return 'unpaid';
+                        $tgl = Carbon::parse($record->transaksi->tanggal_pembayaran);
+                        return ($tgl->isCurrentMonth() && $tgl->isCurrentYear()) ? 'paid' : 'unpaid';
+                    })
+                    ->badge()
+                    ->color(fn(string $state): string => match ($state) {
+                        'paid' => 'success',
+                        'unpaid' => 'danger',
+                    })
+                    ->formatStateUsing(fn(string $state): string => $state === 'paid' ? 'LUNAS' : 'BELUM'),
+            ])
+            ->filters([
+                Tables\Filters\SelectFilter::make('lokasi')
+                    ->options([
+                        'Malang' => 'Malang',
+                        'Surabaya' => 'Surabaya',
+                        'Kediri' => 'Kediri',
+                    ]),
+            ]);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            //
+        ];
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListTempatKos::route('/'),
+            'create' => Pages\CreateTempatKos::route('/create'),
+            'edit' => Pages\EditTempatKos::route('/{record}/edit'),
+        ];
+    }
+}
