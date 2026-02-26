@@ -35,6 +35,18 @@ class TempatKosResource extends Resource
                     ->required(),
                 Forms\Components\TextInput::make('nomor_kamar')->required(),
                 // Kode Unik is auto-generated, so we don't show it or make it disabled
+
+                Forms\Components\TextInput::make('harga')
+                    ->label('Harga Sewa / Bulan')
+                    ->prefix('Rp')
+                    ->numeric()
+                    ->required(),
+
+                Forms\Components\Select::make('status')
+                    ->options(['Kosong' => 'Kosong', 'Ditempati' => 'Ditempati'])
+                    ->default('Kosong')
+                    ->required(),
+
                 Forms\Components\Select::make('id_penyewa')
                     ->relationship('penyewa', 'nama_lengkap')
                     ->label('Nama Penyewa')
@@ -50,9 +62,6 @@ class TempatKosResource extends Resource
                             ->where(fn($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now()))
                             ->pluck('nama_lengkap', 'id');
                     }),
-                Forms\Components\Select::make('id_transaksi')
-                    ->relationship('transaksi', 'id') // Assuming you select ID or formatted string
-                    ->label('Latest Transaction ID'),
             ]);
     }
 
@@ -74,21 +83,25 @@ class TempatKosResource extends Resource
                     ->label('Penghuni')
                     ->searchable(),
 
-                // Re-use logika status bayar di tabel ini juga
+                Tables\Columns\TextColumn::make('harga')
+                    ->label('Harga/Bulan')
+                    ->money('IDR')
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('status')
-                    ->label('Status Bayar')
-                    ->getStateUsing(function ($record) {
-                        if (!$record->transaksi)
-                            return 'unpaid';
-                        $tgl = Carbon::parse($record->transaksi->tanggal_pembayaran);
-                        return ($tgl->isCurrentMonth() && $tgl->isCurrentYear()) ? 'paid' : 'unpaid';
-                    })
+                    ->label('Status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
-                        'paid' => 'success',
-                        'unpaid' => 'danger',
-                    })
-                    ->formatStateUsing(fn(string $state): string => $state === 'paid' ? 'LUNAS' : 'BELUM'),
+                        'Ditempati' => 'success',
+                        'Kosong'    => 'gray',
+                        default     => 'gray',
+                    }),
+
+                Tables\Columns\TextColumn::make('tgl_jatuh_tempo')
+                    ->label('Jatuh Tempo')
+                    ->date('d M Y')
+                    ->color(fn($record) => $record->tgl_jatuh_tempo?->lt(now()) ? 'danger' : 'success')
+                    ->sortable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('lokasi')
@@ -97,6 +110,8 @@ class TempatKosResource extends Resource
                         'Surabaya' => 'Surabaya',
                         'Kediri' => 'Kediri',
                     ]),
+                Tables\Filters\SelectFilter::make('status')
+                    ->options(['Kosong' => 'Kosong', 'Ditempati' => 'Ditempati']),
             ]);
     }
 

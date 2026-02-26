@@ -20,40 +20,45 @@ class StatsOverview extends BaseWidget
             ->whereYear('tanggal_pembayaran', now()->year)
             ->sum('nominal');
 
-        // 2. Hitung Orang yang Belum Bayar Bulan Ini
-        // Logika: Ambil semua kamar yg ada penghuninya, cek transaksi terakhirnya
-        $kamarTerisi = TempatKos::whereNotNull('id_penyewa')->with('transaksi')->get();
+        // 2. Status kamar berdasarkan tgl_jatuh_tempo (bukan bulan kalender)
+        $kamarDitempati = TempatKos::where('status', 'Ditempati');
 
-        $belumBayar = $kamarTerisi->filter(function ($kamar) {
-            // Jika tidak ada data transaksi sama sekali -> Belum Bayar
-            if (!$kamar->transaksi)
-                return true;
+        // Sudah melewati jatuh tempo → TUNGGAKAN
+        $tunggakan = (clone $kamarDitempati)
+            ->whereNotNull('tgl_jatuh_tempo')
+            ->where('tgl_jatuh_tempo', '<', now())
+            ->count();
 
-            // Jika tanggal transaksi bukan bulan ini -> Belum Bayar
-            $tglBayar = Carbon::parse($kamar->transaksi->tanggal_pembayaran);
-            return !($tglBayar->isCurrentMonth() && $tglBayar->isCurrentYear());
-        })->count();
+        // Belum pernah bayar (tgl_jatuh_tempo null) → BELUM BAYAR
+        $belumBayar = (clone $kamarDitempati)
+            ->whereNull('tgl_jatuh_tempo')
+            ->count();
 
         // 3. Hitung Kamar Kosong
-        $kamarKosong = TempatKos::whereNull('id_penyewa')->count();
-        $totalKamar = TempatKos::count();
+        $kamarKosong = TempatKos::where('status', 'Kosong')->count();
+        $totalKamar  = TempatKos::count();
 
         return [
             Stat::make('Pemasukan Bulan Ini', 'Rp ' . number_format($pemasukan, 0, ',', '.'))
-                ->description('Total uang masuk')
+                ->description('Total uang masuk ' . now()->translatedFormat('F Y'))
                 ->descriptionIcon('heroicon-m-banknotes')
-                ->color('success') // Warna Hijau
-                ->chart([7, 2, 10, 3, 15, 4, 17]), // Grafik hiasan (dummy data)
+                ->color('success')
+                ->chart([7, 2, 10, 3, 15, 4, 17]),
 
-            Stat::make('Belum Bayar', $belumBayar . ' Orang')
-                ->description('Penyewa nunggak bulan ini')
+            Stat::make('Tunggakan', $tunggakan . ' Kamar')
+                ->description('Jatuh tempo sudah lewat')
                 ->descriptionIcon('heroicon-m-exclamation-triangle')
-                ->color('danger'), // Warna Merah (Warning!)
+                ->color('danger'),
+
+            Stat::make('Belum Bayar', $belumBayar . ' Kamar')
+                ->description('Belum ada transaksi sama sekali')
+                ->descriptionIcon('heroicon-m-clock')
+                ->color('warning'),
 
             Stat::make('Ketersediaan Kamar', $kamarKosong . ' / ' . $totalKamar)
                 ->description('Kamar kosong siap huni')
                 ->descriptionIcon('heroicon-m-home')
-                ->color('primary'), // Warna Biru
+                ->color('primary'),
         ];
     }
 }

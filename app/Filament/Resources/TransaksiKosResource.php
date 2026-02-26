@@ -31,18 +31,54 @@ class TransaksiKosResource extends Resource
                     ->label('Tanggal')
                     ->required(),
 
-                Forms\Components\TextInput::make('lokasi_kos')
-                    ->label('Lokasi Kos')
+                Forms\Components\Select::make('id_tempat_kos')
+                    ->label('Kamar')
+                    ->options(function () {
+                        return \App\Models\TempatKos::with('penyewa')
+                            ->get()
+                            ->mapWithKeys(fn($k) => [
+                                $k->id => $k->kode_unik . ' — ' . $k->lokasi
+                                    . ($k->penyewa ? ' [' . $k->penyewa->nama_lengkap . ']' : ' [Kosong]'),
+                            ]);
+                    })
+                    ->searchable()
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, callable $set) {
+                        $kamar = \App\Models\TempatKos::find($state);
+                        if ($kamar) {
+                            $set('id_penyewa', $kamar->id_penyewa);
+                            $set('nominal', $kamar->harga);
+                        }
+                    })
                     ->required(),
+
+                Forms\Components\Select::make('id_penyewa')
+                    ->relationship('penyewa', 'nama_lengkap')
+                    ->label('Penyewa')
+                    ->searchable()
+                    ->preload(),
 
                 Forms\Components\TextInput::make('nominal')
                     ->label('Nominal')
+                    ->prefix('Rp')
                     ->numeric()
                     ->required(),
 
-                Forms\Components\Select::make('metode_pembayaran')
-                    ->options(['Transfer' => 'Transfer', 'Tunai' => 'Tunai'])
+                Forms\Components\TextInput::make('durasi_bulan_dibayar')
+                    ->label('Durasi (Bulan)')
+                    ->numeric()
+                    ->default(1)
                     ->required(),
+
+                Forms\Components\Select::make('metode_pembayaran')
+                    ->options(['Transfer' => 'Transfer', 'Tunai' => 'Tunai', 'QRIS' => 'QRIS'])
+                    ->required(),
+
+                Forms\Components\FileUpload::make('bukti_transfer')
+                    ->label('Bukti Transfer')
+                    ->image()
+                    ->directory('bukti-bayar')
+                    ->visibility('public'),
             ]);
     }
 
@@ -60,9 +96,15 @@ class TransaksiKosResource extends Resource
                     ->label('Nama Penyewa')
                     ->searchable(),
 
-                Tables\Columns\TextColumn::make('lokasi_kos')
+                Tables\Columns\TextColumn::make('tempatKos.kode_unik')
+                    ->label('Kamar')
                     ->badge()
                     ->color('info'),
+
+                Tables\Columns\TextColumn::make('tempatKos.lokasi')
+                    ->label('Lokasi')
+                    ->badge()
+                    ->color('gray'),
 
                 Tables\Columns\TextColumn::make('nominal')
                     ->money('IDR')

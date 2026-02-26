@@ -12,6 +12,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Enums\FiltersLayout;
 
 class PenyewaResource extends Resource
 {
@@ -52,7 +53,6 @@ class PenyewaResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn($query) => $query->whereNull('end_date')->orWhere('end_date', '>', now()))
             ->columns([
                 Tables\Columns\TextColumn::make('nama_lengkap')
                     ->searchable(),
@@ -61,55 +61,59 @@ class PenyewaResource extends Resource
                     ->label('WhatsApp')
                     ->icon('heroicon-m-phone'),
 
-                // LOGIKA STATUS PEMBAYARAN
+                Tables\Columns\TextColumn::make('tempatKos.kode_unik')
+                    ->label('Kamar')
+                    ->badge()
+                    ->color('info'),
+
                 Tables\Columns\TextColumn::make('status_bayar')
-                    ->label('Status Bulan Ini')
+                    ->label('Status Bayar')
                     ->getStateUsing(function ($record) {
                         $kamar = $record->tempatKos;
 
-                        if (!$kamar || !$kamar->transaksi) {
-                            return 'unpaid';
+                        if (!$kamar || !$kamar->tgl_jatuh_tempo) {
+                            return 'belum_bayar';
                         }
 
-                        $tglBayar = Carbon::parse($kamar->transaksi->tanggal_pembayaran);
+                        if ($kamar->tgl_jatuh_tempo->lt(now())) {
+                            return 'tunggakan';
+                        }
 
-                        return ($tglBayar->isCurrentMonth() && $tglBayar->isCurrentYear())
-                            ? 'paid'
-                            : 'unpaid';
+                        return 'lunas';
                     })
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
-                        'paid' => 'success',
-                        'unpaid' => 'danger',
+                        'lunas'       => 'success',
+                        'belum_bayar' => 'warning',
+                        'tunggakan'   => 'danger',
+                        default       => 'gray',
                     })
                     ->formatStateUsing(fn(string $state): string => match ($state) {
-                        'paid' => '✅ LUNAS',
-                        'unpaid' => '❌ BELUM BAYAR',
+                        'lunas'       => '✅ LUNAS',
+                        'belum_bayar' => '🕐 BELUM BAYAR',
+                        'tunggakan'   => '❌ TUNGGAKAN',
+                        default       => '-',
                     }),
-                Tables\Columns\TextColumn::make('status_tagihan')
-                    ->label('Status Tagihan')
+
+                Tables\Columns\TextColumn::make('jatuh_tempo_label')
+                    ->label('Jatuh Tempo')
                     ->getStateUsing(function ($record) {
-                        // Jika belum pernah ada set tanggal (penyewa baru)
-                        if (!$record->tgl_jatuh_tempo_berikutnya)
-                            return 'Belum Ada Tagihan';
+                        $kamar = $record->tempatKos;
+                        if (!$kamar || !$kamar->tgl_jatuh_tempo) return '-';
 
-                        $today = now();
-                        $dueDate = $record->tgl_jatuh_tempo_berikutnya;
-                        $daysLeft = $today->diffInDays($dueDate, false); // false = return negatif jika lewat
-            
-                        if ($daysLeft < 0)
-                            return 'NUNGGAK ' . abs((int) $daysLeft) . ' HARI';
-                        if ($daysLeft <= 7)
-                            return 'Jatuh Tempo ' . $daysLeft . ' Hari Lagi';
+                        $daysLeft = now()->diffInDays($kamar->tgl_jatuh_tempo, false);
 
-                        return 'AMAN (s/d ' . $dueDate->format('d/m') . ')';
+                        if ($daysLeft < 0)  return 'NUNGGAK ' . abs((int) $daysLeft) . ' HARI';
+                        if ($daysLeft <= 7) return 'Jatuh Tempo ' . $daysLeft . ' Hari Lagi';
+
+                        return 'Aman s/d ' . $kamar->tgl_jatuh_tempo->format('d/m/Y');
                     })
                     ->badge()
                     ->color(fn(string $state): string => match (true) {
-                        str_contains($state, 'NUNGGAK') => 'danger',  // Merah
-                        str_contains($state, 'Hari Lagi') => 'warning', // Kuning
-                        str_contains($state, 'AMAN') => 'success',    // Hijau
-                        default => 'gray',
+                        str_contains($state, 'NUNGGAK')   => 'danger',
+                        str_contains($state, 'Hari Lagi') => 'warning',
+                        str_contains($state, 'Aman')      => 'success',
+                        default                           => 'gray',
                     }),
             ])
             ->actions([
@@ -152,46 +156,45 @@ class PenyewaResource extends Resource
                                 ->required(),
                         ])
                         ->action(function (Penyewa $record, array $data) {
-                            // 1. LOGIKA JATUH TEMPO PINTAR
-                            // Ambil jatuh tempo terakhir. Jika kosong atau masa lalu, mulai dari hari ini.
-                            // Jika masih masa depan (misal bayar sebelum waktunya), lanjut dari tanggal itu.
-                
-                            $jatuhTempoAwal = $record->tgl_jatuh_tempo_berikutnya ?? now();
+                            $kamar = $record->tempatKos;
 
-                            // Pastikan kita tidak menambah bulan dari tanggal lampau yg jauh (reset ke now kalau telat bayar lama)
-                            if ($jatuhTempoAwal < now()->subDays(5)) {
-                                $jatuhTempoAwal = now();
+                            if (!$kamar) {
+                                Notification::make()->title('Error: Penyewa belum assign ke kamar.')->danger()->send();
+                                return;
                             }
 
-                            $durasi = (int) $data['durasi_bulan'];
-                            $jatuhTempoBaru = \Carbon\Carbon::parse($jatuhTempoAwal)->copy()->addMonths($durasi);
+                            // Mulai dari tgl_jatuh_tempo kamar, atau tanggal bayar jika belum ada
+                            $periodeAwal = $kamar->tgl_jatuh_tempo
+                                ? Carbon::parse($kamar->tgl_jatuh_tempo)
+                                : Carbon::parse($data['tanggal_pembayaran']);
 
-                            // 2. Simpan Transaksi dengan Detail Lengkap
-                            $transaksi = \App\Models\TransaksiKos::create([
-                                'id_penyewa' => $record->id,
-                                'lokasi_kos' => $record->tempatKos->lokasi ?? '-', // Backup jika kamar dihapus
-                                'price_kos' => $data['nominal'],
-                                'tanggal_pembayaran' => $data['tanggal_pembayaran'],
-                                'nominal' => $data['nominal'],
-                                'metode_pembayaran' => $data['metode_pembayaran'],
-                                'bukti_transfer' => $data['bukti_transfer'],
+                            // Jika sudah lewat jatuh tempo (tunggakan), mulai dari tanggal pembayaran
+                            if ($periodeAwal->lt(now()->subDays(5))) {
+                                $periodeAwal = Carbon::parse($data['tanggal_pembayaran']);
+                            }
+
+                            $durasi       = (int) $data['durasi_bulan'];
+                            $periodeAkhir = $periodeAwal->copy()->addMonths($durasi)->subDay();
+
+                            // Model boot() di TransaksiKos akan auto-sync tgl_jatuh_tempo pada kamar
+                            \App\Models\TransaksiKos::create([
+                                'id_penyewa'           => $record->id,
+                                'id_tempat_kos'        => $kamar->id,
+                                'tanggal_pembayaran'   => $data['tanggal_pembayaran'],
+                                'nominal'              => $data['nominal'],
+                                'metode_pembayaran'    => $data['metode_pembayaran'],
+                                'bukti_transfer'       => $data['bukti_transfer'] ?? null,
                                 'durasi_bulan_dibayar' => $durasi,
-                                'periode_mulai' => $jatuhTempoAwal,
-                                'periode_selesai' => $jatuhTempoBaru,
-                                'history_pembayaran' => "Bayar $durasi bulan. Valid s/d " . $jatuhTempoBaru->format('d M Y'),
+                                'periode_mulai'        => $periodeAwal,
+                                'periode_selesai'      => $periodeAkhir,
+                                'history_pembayaran'   => "Bayar $durasi bulan. Valid s/d " . $periodeAkhir->format('d M Y'),
                             ]);
 
-                            // 3. Update Data Penyewa (Perpanjang masa aktif)
-                            $record->update([
-                                'tgl_jatuh_tempo_berikutnya' => $jatuhTempoBaru,
-                            ]);
-
-                            // 4. Update Kamar (opsional, untuk referensi cepat)
-                            if ($record->tempatKos) {
-                                $record->tempatKos->update(['id_transaksi' => $transaksi->id]);
-                            }
-
-                            Notification::make()->title('Pembayaran Berhasil!')->body("Masa aktif diperpanjang sampai " . $jatuhTempoBaru->format('d M Y'))->success()->send();
+                            Notification::make()
+                                ->title('Pembayaran Berhasil!')
+                                ->body('Masa aktif diperpanjang sampai ' . $periodeAkhir->format('d M Y'))
+                                ->success()
+                                ->send();
                         }),
                     Tables\Actions\Action::make('checkout')
                         ->label('Checkout / Pindah')
@@ -201,26 +204,19 @@ class PenyewaResource extends Resource
                         ->modalHeading('Konfirmasi Checkout Penyewa')
                         ->modalDescription('Apakah Anda yakin penyewa ini sudah pindah? Kamar akan dikosongkan dan reminder dimatikan.')
                         ->action(function (Penyewa $record) {
-                            // 1. Ambil data kamar yang ditempati penyewa ini
                             $kamar = $record->tempatKos;
 
                             if ($kamar) {
-                                // Kosongkan kamar (Set ID Penyewa & Transaksi jadi NULL)
                                 $kamar->update([
-                                    'id_penyewa' => null,
-                                    'id_transaksi' => null, // Reset status bayar kamar juga
+                                    'id_penyewa'      => null,
+                                    'status'          => 'Kosong',
+                                    'tgl_jatuh_tempo' => null,
                                 ]);
                             }
 
-                            // 2. Set Tanggal Keluar Penyewa jadi HARI INI
-                            $record->update([
-                                'end_date' => now(),
-                            ]);
-
-                            // 3. Hapus semua Reminder tagihan orang ini (biar gak dispam WA)
+                            $record->update(['end_date' => now()]);
                             $record->reminders()->delete();
 
-                            // 4. Notifikasi Sukses
                             Notification::make()
                                 ->title('Berhasil Checkout')
                                 ->body('Kamar telah dikosongkan dan siap untuk penyewa baru.')
@@ -230,11 +226,22 @@ class PenyewaResource extends Resource
                 ]),
             ])
             ->filters([
-                Tables\Filters\Filter::make('tampilkan_alumni')
-                    ->label('Tampilkan Alumni (Sudah Checkout)')
-                    ->query(fn($query) => $query->withoutGlobalScopes()) // Reset filter di atas
-                    ->toggle(), // Jadi tombol on/off
-            ]);
+                Tables\Filters\SelectFilter::make('tampilkan')
+                    ->label('Tampilkan')
+                    ->options([
+                        'aktif'  => '🏠 Penyewa Aktif',
+                        'alumni' => '📦 Alumni (Sudah Checkout)',
+                        'semua'  => '👥 Semua',
+                    ])
+                    ->default('aktif')
+                    ->query(function ($query, array $data) {
+                        return match ($data['value'] ?? 'aktif') {
+                            'alumni' => $query->whereNotNull('end_date')->where('end_date', '<=', now()),
+                            'semua'  => $query,
+                            default  => $query->where(fn($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now())),
+                        };
+                    }),
+            ], layout: FiltersLayout::AboveContent);
     }
 
     public static function getRelations(): array
