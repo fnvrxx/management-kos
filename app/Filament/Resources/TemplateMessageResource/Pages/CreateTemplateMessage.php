@@ -1,21 +1,21 @@
 <?php
 
-namespace App\Filament\Resources\PengeluaranResource\Pages;
+namespace App\Filament\Resources\TemplateMessageResource\Pages;
 
-use App\Filament\Resources\PengeluaranResource;
+use App\Filament\Resources\TemplateMessageResource;
 use Filament\Actions;
 use Filament\Resources\Pages\CreateRecord;
 
-class CreatePengeluaran extends CreateRecord
+class CreateTemplateMessage extends CreateRecord
 {
-    protected static string $resource = PengeluaranResource::class;
+    protected static string $resource = TemplateMessageResource::class;
 
     protected function getHeaderActions(): array
     {
         return [
             Actions\Action::make('back')
                 ->label('Kembali')
-                ->url(PengeluaranResource::getUrl('index'))
+                ->url(TemplateMessageResource::getUrl('index'))
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray'),
         ];

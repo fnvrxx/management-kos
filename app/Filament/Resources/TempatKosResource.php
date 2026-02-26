@@ -42,11 +42,6 @@ class TempatKosResource extends Resource
                     ->numeric()
                     ->required(),
 
-                Forms\Components\Select::make('status')
-                    ->options(['Kosong' => 'Kosong', 'Ditempati' => 'Ditempati'])
-                    ->default('Kosong')
-                    ->required(),
-
                 Forms\Components\Select::make('id_penyewa')
                     ->relationship('penyewa', 'nama_lengkap')
                     ->label('Nama Penyewa')
@@ -73,11 +68,9 @@ class TempatKosResource extends Resource
                     ->sortable()
                     ->badge(), // Biar ada warnanya dikit
 
-                Tables\Columns\TextColumn::make('kode_unik')
-                    ->label('Kode Unik')
-                    ->copyable(), // Biar bisa dicopy admin
-
-                Tables\Columns\TextColumn::make('nomor_kamar'),
+                Tables\Columns\TextColumn::make('nomor_kamar')
+                    ->label('Nomor Kamar')
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('penyewa.nama_lengkap')
                     ->label('Penghuni')

@@ -33,17 +33,9 @@ class TempatKos extends Model
     {
         parent::boot();
 
-        // AUTO-GENERATE UNIQUE CODE on create
-        static::creating(function ($model) {
-            $prefix = match ($model->lokasi) {
-                'Malang'   => 'MLG',
-                'Surabaya' => 'SBY',
-                'Kediri'   => 'KDR',
-                default    => 'GEN',
-            };
-
-            $count = static::where('lokasi', $model->lokasi)->count() + 1;
-            $model->kode_unik = $prefix . '-' . str_pad($count, 3, '0', STR_PAD_LEFT);
+        // Auto-derive status based on id_penyewa
+        static::saving(function ($model) {
+            $model->status = $model->id_penyewa ? 'Ditempati' : 'Kosong';
         });
     }
 }

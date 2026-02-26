@@ -1,14 +1,14 @@
 <?php
 
-namespace App\Filament\Resources\PenyewaResource\Pages;
+namespace App\Filament\Resources\TemplateMessageResource\Pages;
 
-use App\Filament\Resources\PenyewaResource;
+use App\Filament\Resources\TemplateMessageResource;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 
-class ListPenyewas extends ListRecords
+class ListTemplateMessages extends ListRecords
 {
-    protected static string $resource = PenyewaResource::class;
+    protected static string $resource = TemplateMessageResource::class;
 
     protected function getHeaderActions(): array
     {

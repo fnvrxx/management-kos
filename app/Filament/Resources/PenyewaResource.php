@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\PenyewaResource\Pages;
 use App\Models\Penyewa;
 use App\Models\TransaksiKos;
+use App\Models\TempatKos;
 use Filament\Notifications\Notification;
 use Carbon\Carbon;
 use Filament\Forms;
@@ -12,7 +13,6 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Tables\Enums\FiltersLayout;
 
 class PenyewaResource extends Resource
 {
@@ -61,7 +61,7 @@ class PenyewaResource extends Resource
                     ->label('WhatsApp')
                     ->icon('heroicon-m-phone'),
 
-                Tables\Columns\TextColumn::make('tempatKos.kode_unik')
+                Tables\Columns\TextColumn::make('tempatKos.nomor_kamar')
                     ->label('Kamar')
                     ->badge()
                     ->color('info'),
@@ -71,47 +71,84 @@ class PenyewaResource extends Resource
                     ->getStateUsing(function ($record) {
                         $kamar = $record->tempatKos;
 
-                        if (!$kamar || !$kamar->tgl_jatuh_tempo) {
+                        if (!$kamar) {
+                            return 'belum_assign';
+                        }
+
+                        if (!$kamar->tgl_jatuh_tempo) {
+                            // Check if there are any partial payments (cicilan without completing a month)
+                            $partial = TransaksiKos::getPartialPayment($kamar);
+                            if ($partial > 0) {
+                                $formatted = number_format($partial, 0, ',', '.');
+                                $hargaFormatted = number_format($kamar->harga, 0, ',', '.');
+                                return "cicilan|{$partial}|{$kamar->harga}";
+                            }
                             return 'belum_bayar';
                         }
 
-                        if ($kamar->tgl_jatuh_tempo->lt(now())) {
-                            return 'tunggakan';
+                        if ($kamar->tgl_jatuh_tempo->gt(Carbon::today())) {
+                            return 'lunas';
                         }
 
-                        return 'lunas';
+                        // Jatuh tempo sudah lewat — cek apakah ada cicilan untuk bulan berikutnya
+                        $partial = TransaksiKos::getPartialPayment($kamar);
+                        if ($partial > 0) {
+                            return "cicilan|{$partial}|{$kamar->harga}";
+                        }
+
+                        return 'tunggakan';
                     })
                     ->badge()
-                    ->color(fn(string $state): string => match ($state) {
-                        'lunas'       => 'success',
-                        'belum_bayar' => 'warning',
-                        'tunggakan'   => 'danger',
-                        default       => 'gray',
+                    ->color(fn(string $state): string => match (true) {
+                        str_starts_with($state, 'cicilan') => 'info',
+                        $state === 'lunas'                  => 'success',
+                        $state === 'belum_bayar'            => 'warning',
+                        $state === 'belum_assign'           => 'gray',
+                        $state === 'tunggakan'              => 'danger',
+                        default                             => 'gray',
                     })
-                    ->formatStateUsing(fn(string $state): string => match ($state) {
-                        'lunas'       => '✅ LUNAS',
-                        'belum_bayar' => '🕐 BELUM BAYAR',
-                        'tunggakan'   => '❌ TUNGGAKAN',
-                        default       => '-',
+                    ->formatStateUsing(function (string $state): string {
+                        if (str_starts_with($state, 'cicilan')) {
+                            $parts = explode('|', $state);
+                            $paid  = number_format((int)$parts[1], 0, ',', '.');
+                            $total = number_format((int)$parts[2], 0, ',', '.');
+                            return "💰 CICILAN Rp {$paid} / {$total}";
+                        }
+
+                        return match ($state) {
+                            'lunas'        => '✅ LUNAS',
+                            'belum_bayar'  => '🕐 BELUM BAYAR',
+                            'belum_assign' => '⬜ BELUM ASSIGN KAMAR',
+                            'tunggakan'    => '❌ TUNGGAKAN',
+                            default        => '-',
+                        };
                     }),
 
                 Tables\Columns\TextColumn::make('jatuh_tempo_label')
                     ->label('Jatuh Tempo')
                     ->getStateUsing(function ($record) {
                         $kamar = $record->tempatKos;
-                        if (!$kamar || !$kamar->tgl_jatuh_tempo) return '-';
+                        if (!$kamar) return '-';
 
-                        $daysLeft = now()->diffInDays($kamar->tgl_jatuh_tempo, false);
+                        if (!$kamar->tgl_jatuh_tempo) {
+                            $partial = TransaksiKos::getPartialPayment($kamar);
+                            return $partial > 0 ? 'Cicilan Aktif' : '-';
+                        }
 
-                        if ($daysLeft < 0)  return 'NUNGGAK ' . abs((int) $daysLeft) . ' HARI';
-                        if ($daysLeft <= 7) return 'Jatuh Tempo ' . $daysLeft . ' Hari Lagi';
+                        $daysLeft = (int) Carbon::today()->diffInDays($kamar->tgl_jatuh_tempo, false);
+
+                        if ($daysLeft < 0)   return 'NUNGGAK ' . abs($daysLeft) . ' HARI';
+                        if ($daysLeft === 0) return 'JATUH TEMPO HARI INI!';
+                        if ($daysLeft <= 7)  return 'Jatuh Tempo ' . $daysLeft . ' Hari Lagi';
 
                         return 'Aman s/d ' . $kamar->tgl_jatuh_tempo->format('d/m/Y');
                     })
                     ->badge()
                     ->color(fn(string $state): string => match (true) {
                         str_contains($state, 'NUNGGAK')   => 'danger',
+                        str_contains($state, 'HARI INI')  => 'danger',
                         str_contains($state, 'Hari Lagi') => 'warning',
+                        str_contains($state, 'Cicilan')   => 'info',
                         str_contains($state, 'Aman')      => 'success',
                         default                           => 'gray',
                     }),
@@ -125,36 +162,41 @@ class PenyewaResource extends Resource
                         ->label('Bayar Tagihan')
                         ->icon('heroicon-o-banknotes')
                         ->color('success')
-                        ->form([
-                            Forms\Components\DatePicker::make('tanggal_pembayaran')
-                                ->default(now())
-                                ->required(),
+                        ->form(function (Penyewa $record) {
+                            $kamar = $record->tempatKos;
+                            $harga = $kamar?->harga ?? 0;
+                            $partial = $kamar ? TransaksiKos::getPartialPayment($kamar) : 0;
+                            $sisa = $harga - $partial;
 
-                            Forms\Components\TextInput::make('durasi_bulan')
-                                ->label('Bayar untuk berapa bulan?')
-                                ->numeric()
-                                ->default(1)
-                                ->minValue(1)
-                                ->required()
-                                ->reactive() // Agar bisa hitung total otomatis (opsional)
-                                ->helperText('Contoh: Isi 3 jika bayar langsung 3 bulan.'),
+                            $helperText = $partial > 0
+                                ? 'Sudah ada cicilan Rp ' . number_format($partial, 0, ',', '.') .
+                                  '. Sisa tagihan: Rp ' . number_format($sisa, 0, ',', '.')
+                                : 'Harga sewa: Rp ' . number_format($harga, 0, ',', '.');
 
-                            Forms\Components\TextInput::make('nominal')
-                                ->prefix('Rp')
-                                ->numeric()
-                                ->required(),
+                            return [
+                                Forms\Components\DatePicker::make('tanggal_pembayaran')
+                                    ->default(now())
+                                    ->required(),
 
-                            Forms\Components\FileUpload::make('bukti_transfer')
-                                ->label('Bukti Transfer (Foto/Screenshot)')
-                                ->image()
-                                ->directory('bukti-bayar') // Folder penyimpanan
-                                ->visibility('public'),
+                                Forms\Components\TextInput::make('nominal')
+                                    ->prefix('Rp')
+                                    ->numeric()
+                                    ->required()
+                                    ->default($sisa > 0 ? $sisa : $harga)
+                                    ->helperText($helperText),
 
-                            Forms\Components\Select::make('metode_pembayaran')
-                                ->options(['Transfer' => 'Transfer Bank', 'Tunai' => 'Tunai', 'QRIS' => 'QRIS'])
-                                ->default('Transfer')
-                                ->required(),
-                        ])
+                                Forms\Components\FileUpload::make('bukti_transfer')
+                                    ->label('Bukti Transfer (Foto/Screenshot)')
+                                    ->image()
+                                    ->directory('bukti-bayar')
+                                    ->visibility('public'),
+
+                                Forms\Components\Select::make('metode_pembayaran')
+                                    ->options(['Transfer' => 'Transfer Bank', 'Tunai' => 'Tunai', 'QRIS' => 'QRIS'])
+                                    ->default('Transfer')
+                                    ->required(),
+                            ];
+                        })
                         ->action(function (Penyewa $record, array $data) {
                             $kamar = $record->tempatKos;
 
@@ -163,38 +205,68 @@ class PenyewaResource extends Resource
                                 return;
                             }
 
-                            // Mulai dari tgl_jatuh_tempo kamar, atau tanggal bayar jika belum ada
+                            $nominal = (int) $data['nominal'];
+                            $harga   = $kamar->harga ?? 0;
+
+                            // Determine how many full months this payment covers
+                            // (considering existing partial payments)
+                            $existingPartial = TransaksiKos::getPartialPayment($kamar);
+                            $totalWithNew    = $existingPartial + $nominal;
+                            $fullMonths      = $harga > 0 ? (int) floor($totalWithNew / $harga) : 0;
+
+                            // Compute periode for record-keeping
                             $periodeAwal = $kamar->tgl_jatuh_tempo
                                 ? Carbon::parse($kamar->tgl_jatuh_tempo)
-                                : Carbon::parse($data['tanggal_pembayaran']);
+                                : Carbon::parse($record->start_date ?? $data['tanggal_pembayaran']);
 
-                            // Jika sudah lewat jatuh tempo (tunggakan), mulai dari tanggal pembayaran
-                            if ($periodeAwal->lt(now()->subDays(5))) {
-                                $periodeAwal = Carbon::parse($data['tanggal_pembayaran']);
+                            $periodeAkhir = $fullMonths > 0
+                                ? $periodeAwal->copy()->addMonths($fullMonths)->subDay()
+                                : $periodeAwal->copy();
+
+                            // Build human-readable history
+                            $nominalFormatted = number_format($nominal, 0, ',', '.');
+                            if ($fullMonths > 0 && ($totalWithNew % $harga) === 0) {
+                                $historyText = "Bayar Rp {$nominalFormatted} → LUNAS s/d " . $periodeAkhir->format('d M Y');
+                            } elseif ($fullMonths > 0) {
+                                $remainder = $totalWithNew % $harga;
+                                $historyText = "Bayar Rp {$nominalFormatted} → $fullMonths bulan lunas + cicilan Rp " . number_format($remainder, 0, ',', '.');
+                            } else {
+                                $historyText = "Cicilan Rp {$nominalFormatted} pada " . Carbon::parse($data['tanggal_pembayaran'])->format('d M Y');
                             }
 
-                            $durasi       = (int) $data['durasi_bulan'];
-                            $periodeAkhir = $periodeAwal->copy()->addMonths($durasi)->subDay();
-
-                            // Model boot() di TransaksiKos akan auto-sync tgl_jatuh_tempo pada kamar
-                            \App\Models\TransaksiKos::create([
+                            // Boot hook on TransaksiKos::saved will auto-recompute tgl_jatuh_tempo
+                            TransaksiKos::create([
                                 'id_penyewa'           => $record->id,
                                 'id_tempat_kos'        => $kamar->id,
                                 'tanggal_pembayaran'   => $data['tanggal_pembayaran'],
-                                'nominal'              => $data['nominal'],
+                                'nominal'              => $nominal,
                                 'metode_pembayaran'    => $data['metode_pembayaran'],
                                 'bukti_transfer'       => $data['bukti_transfer'] ?? null,
-                                'durasi_bulan_dibayar' => $durasi,
+                                'durasi_bulan_dibayar' => $fullMonths,
                                 'periode_mulai'        => $periodeAwal,
                                 'periode_selesai'      => $periodeAkhir,
-                                'history_pembayaran'   => "Bayar $durasi bulan. Valid s/d " . $periodeAkhir->format('d M Y'),
+                                'history_pembayaran'   => $historyText,
                             ]);
 
-                            Notification::make()
-                                ->title('Pembayaran Berhasil!')
-                                ->body('Masa aktif diperpanjang sampai ' . $periodeAkhir->format('d M Y'))
-                                ->success()
-                                ->send();
+                            // Refresh model to show updated status
+                            $kamar->refresh();
+                            $partial = TransaksiKos::getPartialPayment($kamar);
+
+                            if ($partial > 0) {
+                                $partialFmt = number_format($partial, 0, ',', '.');
+                                $hargaFmt   = number_format($harga, 0, ',', '.');
+                                Notification::make()
+                                    ->title('Cicilan Tercatat!')
+                                    ->body("Sudah dibayar Rp {$partialFmt} dari Rp {$hargaFmt}. Sisa: Rp " . number_format($harga - $partial, 0, ',', '.'))
+                                    ->warning()
+                                    ->send();
+                            } else {
+                                Notification::make()
+                                    ->title('Pembayaran Berhasil!')
+                                    ->body('Masa aktif diperpanjang sampai ' . $kamar->tgl_jatuh_tempo?->format('d M Y'))
+                                    ->success()
+                                    ->send();
+                            }
                         }),
                     Tables\Actions\Action::make('checkout')
                         ->label('Checkout / Pindah')
@@ -209,7 +281,6 @@ class PenyewaResource extends Resource
                             if ($kamar) {
                                 $kamar->update([
                                     'id_penyewa'      => null,
-                                    'status'          => 'Kosong',
                                     'tgl_jatuh_tempo' => null,
                                 ]);
                             }
@@ -241,7 +312,7 @@ class PenyewaResource extends Resource
                             default  => $query->where(fn($q) => $q->whereNull('end_date')->orWhere('end_date', '>', now())),
                         };
                     }),
-            ], layout: FiltersLayout::AboveContent);
+            ]);
     }
 
     public static function getRelations(): array
