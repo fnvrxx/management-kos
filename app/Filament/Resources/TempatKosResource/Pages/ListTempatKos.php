@@ -13,6 +13,11 @@ class ListTempatKos extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('dashboard')
+                ->label('Dashboard')
+                ->url(url('/admin'))
+                ->icon('heroicon-o-home')
+                ->color('gray'),
             Actions\CreateAction::make(),
         ];
     }

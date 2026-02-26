@@ -7,6 +7,8 @@ use App\Filament\Resources\TransaksiKosResource\RelationManagers;
 use Filament\Tables\Actions\ExportAction; // Import Action Export
 use App\Filament\Exports\TransaksiKosExporter; // Import Exporter Class
 use App\Models\TransaksiKos;
+use App\Models\TempatKos;
+use Carbon\Carbon;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -29,22 +31,67 @@ class TransaksiKosResource extends Resource
             ->schema([
                 Forms\Components\DatePicker::make('tanggal_pembayaran')
                     ->label('Tanggal')
+                    ->required()
+                    ->default(now())
+                    ->reactive(),
+
+                Forms\Components\Select::make('id_tempat_kos')
+                    ->label('Kamar')
+                    ->options(function () {
+                        return TempatKos::with('penyewa')
+                            ->where('status', 'Ditempati')
+                            ->get()
+                            ->mapWithKeys(fn($k) => [
+                                $k->id => $k->nomor_kamar . ' — ' . $k->lokasi
+                                    . ($k->penyewa ? ' (' . $k->penyewa->nama_lengkap . ')' : ''),
+                            ]);
+                    })
+                    ->searchable()
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, callable $set) {
+                        $kamar = TempatKos::find($state);
+                        if ($kamar) {
+                            $set('id_penyewa', $kamar->id_penyewa);
+                            $set('nominal', $kamar->harga);
+                        }
+                    })
                     ->required(),
 
-                Forms\Components\TextInput::make('lokasi_kos')
-                    ->label('Lokasi Kos')
-                    ->required(),
+                Forms\Components\Select::make('id_penyewa')
+                    ->relationship('penyewa', 'nama_lengkap')
+                    ->label('Penyewa')
+                    ->searchable()
+                    ->preload()
+                    ->disabled()
+                    ->dehydrated(),
 
                 Forms\Components\TextInput::make('nominal')
-                    ->label('Nominal')
+                    ->label('Nominal (bisa cicilan)')
+                    ->prefix('Rp')
                     ->numeric()
-                    ->required(),
+                    ->required()
+                    ->helperText('Jika cicilan, isi jumlah yang dibayar. Tidak harus penuh.'),
+
+                Forms\Components\TextInput::make('durasi_bulan_dibayar')
+                    ->label('Durasi (Bulan)')
+                    ->numeric()
+                    ->default(1)
+                    ->required()
+                    ->helperText('Isi 0 jika ini pembayaran cicilan (partial).'),
 
                 Forms\Components\Select::make('metode_pembayaran')
-                    ->options(['Transfer' => 'Transfer', 'Tunai' => 'Tunai'])
+                    ->options(['Transfer' => 'Transfer', 'Tunai' => 'Tunai', 'QRIS' => 'QRIS'])
                     ->required(),
+
+                Forms\Components\FileUpload::make('bukti_transfer')
+                    ->label('Bukti Transfer')
+                    ->image()
+                    ->directory('bukti-bayar')
+                    ->visibility('public'),
             ]);
     }
+
+
 
     public static function table(Table $table): Table
     {
@@ -60,9 +107,15 @@ class TransaksiKosResource extends Resource
                     ->label('Nama Penyewa')
                     ->searchable(),
 
-                Tables\Columns\TextColumn::make('lokasi_kos')
+                Tables\Columns\TextColumn::make('tempatKos.nomor_kamar')
+                    ->label('Kamar')
                     ->badge()
                     ->color('info'),
+
+                Tables\Columns\TextColumn::make('tempatKos.lokasi')
+                    ->label('Lokasi')
+                    ->badge()
+                    ->color('gray'),
 
                 Tables\Columns\TextColumn::make('nominal')
                     ->money('IDR')
@@ -87,7 +140,7 @@ class TransaksiKosResource extends Resource
                                 $data['sampai_tanggal'] ?? null,
                                 fn(Builder $query, $date): Builder => $query->whereDate('tanggal_pembayaran', '<=', $date),
                             );
-                    })
+                    })  
             ])
             ->headerActions([
                 ExportAction::make()

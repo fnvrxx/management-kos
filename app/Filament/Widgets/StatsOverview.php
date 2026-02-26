@@ -10,50 +10,73 @@ use Carbon\Carbon;
 
 class StatsOverview extends BaseWidget
 {
-    // Mengatur agar widget ini refresh otomatis setiap 30 detik (opsional)
     protected static ?string $pollingInterval = '30s';
 
     protected function getStats(): array
     {
-        // 1. Hitung Pemasukan Bulan Ini
+        // 1. Pemasukan Bulan Ini
         $pemasukan = TransaksiKos::whereMonth('tanggal_pembayaran', now()->month)
             ->whereYear('tanggal_pembayaran', now()->year)
             ->sum('nominal');
 
-        // 2. Hitung Orang yang Belum Bayar Bulan Ini
-        // Logika: Ambil semua kamar yg ada penghuninya, cek transaksi terakhirnya
-        $kamarTerisi = TempatKos::whereNotNull('id_penyewa')->with('transaksi')->get();
+        // 2. Status kamar — computed from sum-based logic
+        $kamarDitempati = TempatKos::where('status', 'Ditempati')->get();
 
-        $belumBayar = $kamarTerisi->filter(function ($kamar) {
-            // Jika tidak ada data transaksi sama sekali -> Belum Bayar
-            if (!$kamar->transaksi)
-                return true;
+        $tunggakan = 0;
+        $belumBayar = 0;
+        $cicilan = 0;
 
-            // Jika tanggal transaksi bukan bulan ini -> Belum Bayar
-            $tglBayar = Carbon::parse($kamar->transaksi->tanggal_pembayaran);
-            return !($tglBayar->isCurrentMonth() && $tglBayar->isCurrentYear());
-        })->count();
+        foreach ($kamarDitempati as $kamar) {
+            if (!$kamar->tgl_jatuh_tempo) {
+                // Check if there's a partial payment
+                $partial = TransaksiKos::getPartialPayment($kamar);
+                if ($partial > 0) {
+                    $cicilan++;
+                } else {
+                    $belumBayar++;
+                }
+            } elseif ($kamar->tgl_jatuh_tempo->lte(Carbon::today())) {
+                // Past due (on or after jatuh tempo) — check if partial payment toward next month
+                $partial = TransaksiKos::getPartialPayment($kamar);
+                if ($partial > 0) {
+                    $cicilan++;
+                } else {
+                    $tunggakan++;
+                }
+            }
+            // else: lunas (tgl_jatuh_tempo > today)
+        }
 
-        // 3. Hitung Kamar Kosong
-        $kamarKosong = TempatKos::whereNull('id_penyewa')->count();
-        $totalKamar = TempatKos::count();
+        // 3. Kamar Kosong
+        $kamarKosong = TempatKos::where('status', 'Kosong')->count();
+        $totalKamar  = TempatKos::count();
 
         return [
             Stat::make('Pemasukan Bulan Ini', 'Rp ' . number_format($pemasukan, 0, ',', '.'))
-                ->description('Total uang masuk')
+                ->description('Total uang masuk ' . now()->translatedFormat('F Y'))
                 ->descriptionIcon('heroicon-m-banknotes')
-                ->color('success') // Warna Hijau
-                ->chart([7, 2, 10, 3, 15, 4, 17]), // Grafik hiasan (dummy data)
+                ->color('success')
+                ->chart([7, 2, 10, 3, 15, 4, 17]),
 
-            Stat::make('Belum Bayar', $belumBayar . ' Orang')
-                ->description('Penyewa nunggak bulan ini')
+            Stat::make('Tunggakan', $tunggakan . ' Kamar')
+                ->description('Jatuh tempo lewat, belum bayar sama sekali')
                 ->descriptionIcon('heroicon-m-exclamation-triangle')
-                ->color('danger'), // Warna Merah (Warning!)
+                ->color('danger'),
+
+            Stat::make('Cicilan', $cicilan . ' Kamar')
+                ->description('Sudah bayar sebagian, belum lunas')
+                ->descriptionIcon('heroicon-m-clock')
+                ->color('info'),
+
+            Stat::make('Belum Bayar', $belumBayar . ' Kamar')
+                ->description('Belum ada transaksi sama sekali')
+                ->descriptionIcon('heroicon-m-clock')
+                ->color('warning'),
 
             Stat::make('Ketersediaan Kamar', $kamarKosong . ' / ' . $totalKamar)
                 ->description('Kamar kosong siap huni')
                 ->descriptionIcon('heroicon-m-home')
-                ->color('primary'), // Warna Biru
+                ->color('primary'),
         ];
     }
 }

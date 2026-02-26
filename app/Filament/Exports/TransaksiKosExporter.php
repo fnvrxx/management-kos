@@ -19,7 +19,8 @@ class TransaksiKosExporter extends Exporter
             // Mengambil nama penyewa dari relasi
             ExportColumn::make('penyewa.nama_lengkap')->label('Nama Penyewa'),
 
-            ExportColumn::make('lokasi_kos')->label('Lokasi'),
+            ExportColumn::make('tempatKos.lokasi')->label('Lokasi'),
+            ExportColumn::make('tempatKos.nomor_kamar')->label('Kamar'),
             ExportColumn::make('tanggal_pembayaran')->label('Tanggal'),
             ExportColumn::make('nominal')->label('Jumlah Uang'),
             ExportColumn::make('metode_pembayaran')->label('Metode'),

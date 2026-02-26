@@ -8,35 +8,34 @@ class TempatKos extends Model
 {
     protected $table = 'tempat_kos';
     protected $guarded = [];
+    protected $casts = [
+        'tgl_jatuh_tempo' => 'date',
+    ];
 
     public function penyewa()
     {
         return $this->belongsTo(Penyewa::class, 'id_penyewa');
     }
 
-    public function transaksi()
+    // One room has many transactions over time
+    public function transaksis()
     {
-        return $this->belongsTo(TransaksiKos::class, 'id_transaksi');
+        return $this->hasMany(TransaksiKos::class, 'id_tempat_kos');
     }
 
-    // AUTO-GENERATE UNIQUE CODE LOGIC
+    // Latest transaction only
+    public function latestTransaksi()
+    {
+        return $this->hasOne(TransaksiKos::class, 'id_tempat_kos')->latestOfMany('periode_selesai');
+    }
+
     protected static function boot()
     {
         parent::boot();
 
-        static::creating(function ($model) {
-            $prefix = match ($model->lokasi) {
-                'Malang' => 'MLG',
-                'Surabaya' => 'SBY',
-                'Kediri' => 'KDR',
-                default => 'GEN',
-            };
-
-            // Count existing rooms in this location to increment
-            $count = static::where('lokasi', $model->lokasi)->count() + 1;
-
-            // Pad with zeros (e.g., 001)
-            $model->kode_unik = $prefix . '-' . str_pad($count, 3, '0', STR_PAD_LEFT);
+        // Auto-derive status based on id_penyewa
+        static::saving(function ($model) {
+            $model->status = $model->id_penyewa ? 'Ditempati' : 'Kosong';
         });
     }
 }

@@ -1,21 +1,21 @@
 <?php
 
-namespace App\Filament\Resources\PenyewaResource\Pages;
+namespace App\Filament\Resources\PengeluaranResource\Pages;
 
-use App\Filament\Resources\PenyewaResource;
+use App\Filament\Resources\PengeluaranResource;
 use Filament\Actions;
 use Filament\Resources\Pages\CreateRecord;
 
-class CreatePenyewa extends CreateRecord
+class CreatePengeluaran extends CreateRecord
 {
-    protected static string $resource = PenyewaResource::class;
+    protected static string $resource = PengeluaranResource::class;
 
     protected function getHeaderActions(): array
     {
         return [
             Actions\Action::make('back')
                 ->label('Kembali')
-                ->url(PenyewaResource::getUrl('index'))
+                ->url(PengeluaranResource::getUrl('index'))
                 ->icon('heroicon-o-arrow-left')
                 ->color('gray'),
         ];

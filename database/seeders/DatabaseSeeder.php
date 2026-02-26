@@ -2,24 +2,23 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
+    // NOTE: WithoutModelEvents removed so TransaksiKos boot() hook
+    // auto-computes tgl_jatuh_tempo on rooms after seeding transactions.
 
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        $this->call([
+            UserSeeder::class,              // 0. Admin user
+            PenyewaSeeder::class,           // 1. Tenants (no dependencies)
+            TempatKosSeeder::class,         // 2. Rooms (depends on penyewa)
+            TransaksiKosSeeder::class,      // 3. Transactions (depends on penyewa + tempat_kos)
+            ReminderSeeder::class,          // 4. Reminders (depends on penyewa)
+            PengeluaranSeeder::class,       // 5. Expenses (no dependencies)
+            TemplateMessageSeeder::class,   // 6. WhatsApp message templates
         ]);
     }
 }

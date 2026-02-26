@@ -13,6 +13,11 @@ class EditPenyewa extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('back')
+                ->label('Kembali')
+                ->url(PenyewaResource::getUrl('index'))
+                ->icon('heroicon-o-arrow-left')
+                ->color('gray'),
             Actions\DeleteAction::make(),
         ];
     }

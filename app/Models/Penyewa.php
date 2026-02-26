@@ -10,9 +10,8 @@ class Penyewa extends Model
     protected $guarded = [];
     protected $casts = [
         'rencana_lama_kos' => 'date',
-        'start_date' => 'date',
-        'end_date' => 'date',
-        'tgl_jatuh_tempo_berikutnya' => 'date', // <--- Tambahkan ini
+        'start_date'       => 'date',
+        'end_date'         => 'date',
     ];
 
     // Relationship: A tenant has one room assignment currently
@@ -25,15 +24,8 @@ class Penyewa extends Model
     {
         return $this->hasMany(Reminder::class, 'id_penyewa');
     }
-    public function riwayatTransaksi()
+    public function transaksis()
     {
-        return $this->hasManyThrough(
-            TransaksiKos::class,
-            TempatKos::class,
-            'id_penyewa', // Foreign key on tempat_kos table...
-            'id', // Foreign key on transaksi_kos table...
-            'id', // Local key on penyewa table...
-            'id_transaksi' // Local key on tempat_kos table...
-        );
+        return $this->hasMany(TransaksiKos::class, 'id_penyewa');
     }
 }
