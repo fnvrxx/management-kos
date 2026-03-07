@@ -1,35 +1,20 @@
 FROM php:8.2-cli
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    zip \
-    unzip \
-    libzip-dev \
-    libicu-dev \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
-    libpq-dev \
+    git curl zip unzip libzip-dev libicu-dev \
+    libpng-dev libonig-dev libxml2-dev libpq-dev \
     && docker-php-ext-install \
-    pdo \
-    pdo_pgsql \
-    mbstring \
-    exif \
-    pcntl \
-    bcmath \
-    gd \
-    zip \
-    intl \
+    pdo pdo_pgsql mbstring exif pcntl bcmath gd zip intl \
     && apt-get clean
 
-# Install composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
 
 COPY . .
+
+# Hapus .env jika ada, paksa Railway inject env variables
+RUN rm -f .env
 
 RUN composer install --no-dev --optimize-autoloader
 
