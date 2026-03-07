@@ -13,13 +13,13 @@ WORKDIR /var/www
 
 COPY . .
 
-# Hapus .env jika ada, paksa Railway inject env variables
 RUN rm -f .env
 
 RUN composer install --no-dev --optimize-autoloader
 
-RUN chmod -R 775 storage bootstrap/cache
+RUN chmod -R 777 storage bootstrap/cache
 
-EXPOSE 8000
+EXPOSE 8080
 
-CMD echo "=== ENV ===" && printenv | grep -E "DB_|APP_|PORT" && echo "=== Starting Laravel ===" && php artisan config:clear && php artisan migrate --force && php artisan db:seed --class=AdminSeeder --force && php artisan serve --host=0.0.0.0 --port=${PORT:-8080}
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["php artisan config:clear && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-8080}"]
