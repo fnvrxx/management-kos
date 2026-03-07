@@ -1,12 +1,20 @@
 <?php
 
-$lockFile = '/tmp/migrated.lock';
+$_SERVER['APP_STORAGE'] = '/tmp';
 
-if (!file_exists($lockFile)) {
-    $projectRoot = __DIR__ . '/..';
-    shell_exec("cd $projectRoot && php artisan migrate --force 2>&1");
-    shell_exec("cd $projectRoot && php artisan db:seed --class=AdminSeeder --force 2>&1");
-    file_put_contents($lockFile, '1');
+$directories = [
+    '/tmp/storage/app/public',
+    '/tmp/storage/framework/cache/data',
+    '/tmp/storage/framework/sessions',
+    '/tmp/storage/framework/views',
+    '/tmp/storage/logs',
+    '/tmp/bootstrap/cache',
+];
+
+foreach ($directories as $dir) {
+    if (!is_dir($dir)) {
+        mkdir($dir, 0755, true);
+    }
 }
 
 require __DIR__ . '/../public/index.php';
