@@ -26,15 +26,18 @@ return new class extends Migration {
 
         // STEP 2: Populate tempat_kos.tgl_jatuh_tempo from latest periode_selesai
         DB::statement('
-     UPDATE tempat_kos tkos
-    SET tgl_jatuh_tempo = latest.latest_selesai
-    FROM (
-        SELECT id_tempat_kos, MAX(periode_selesai) AS latest_selesai
+      UPDATE tempat_kos
+    SET tgl_jatuh_tempo = (
+        SELECT MAX(periode_selesai)
         FROM transaksi_kos
-        WHERE id_tempat_kos IS NOT NULL
-        GROUP BY id_tempat_kos
-    ) latest
-    WHERE latest.id_tempat_kos = tkos.id
+        WHERE transaksi_kos.id_tempat_kos = tempat_kos.id
+        AND transaksi_kos.id_tempat_kos IS NOT NULL
+    )
+    WHERE EXISTS (
+        SELECT 1 FROM transaksi_kos
+        WHERE transaksi_kos.id_tempat_kos = tempat_kos.id
+        AND transaksi_kos.id_tempat_kos IS NOT NULL
+    )
         ');
 
         // STEP 3: Populate tempat_kos.status based on id_penyewa
