@@ -35,10 +35,11 @@ class ReminderResource extends Resource
                     ->searchable()
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $set) {
-                        if (!$state) return;
+                        if (!$state)
+                            return;
 
                         $penyewa = Penyewa::find($state);
-                        $kamar   = $penyewa?->tempatKos;
+                        $kamar = $penyewa?->tempatKos;
 
                         if ($kamar) {
                             $set('end_date', $kamar->tgl_jatuh_tempo?->toDateString());
@@ -79,7 +80,8 @@ class ReminderResource extends Resource
                     ->label('Kamar')
                     ->getStateUsing(function ($record) {
                         $kamar = $record->penyewa?->tempatKos;
-                        if (!$kamar) return '-';
+                        if (!$kamar)
+                            return '-';
                         return $kamar->nomor_kamar . ' — ' . $kamar->lokasi;
                     })
                     ->badge()
@@ -151,7 +153,7 @@ class ReminderResource extends Resource
                     ->modalSubmitActionLabel('✅ Tandai Terkirim')
                     ->action(function (Reminder $record) {
                         $record->update([
-                            'broadcast'        => true,
+                            'broadcast' => true,
                             'history_reminder' => ($record->history_reminder ? $record->history_reminder . "\n" : '')
                                 . '[' . now()->format('d/m/Y H:i') . '] Dikirim via WhatsApp ✅',
                         ]);
@@ -170,23 +172,23 @@ class ReminderResource extends Resource
     public static function buildWhatsAppMessage(Reminder $record): string
     {
         $penyewa = $record->penyewa;
-        $kamar   = $penyewa?->tempatKos;
+        $kamar = $penyewa?->tempatKos;
 
-        $nama       = $penyewa->nama_lengkap ?? '-';
-        $lokasi     = $kamar->lokasi ?? '-';
+        $nama = $penyewa->nama_lengkap ?? '-';
+        $lokasi = $kamar->lokasi ?? '-';
         $nomorKamar = $kamar->nomor_kamar ?? '-';
-        $tagihan    = number_format($record->tanggungan ?? 0, 0, ',', '.');
+        $tagihan = number_format($record->tanggungan ?? 0, 0, ',', '.');
         $jatuhTempo = $record->end_date?->format('d/m/Y') ?? '-';
 
         return "Assalamualaikum Kak {$nama} 🙏\n\n"
-             . "Kami dari pengelola kos *{$lokasi}* ingin mengingatkan bahwa tagihan kos Anda:\n\n"
-             . "📍 Lokasi: *{$lokasi}*\n"
-             . "🏠 Kamar: *{$nomorKamar}*\n"
-             . "💰 Tagihan: *Rp {$tagihan}*\n"
-             . "📅 Jatuh Tempo: *{$jatuhTempo}*\n\n"
-             . "Mohon segera melakukan pembayaran agar tidak terjadi keterlambatan.\n\n"
-             . "Terima kasih atas kerjasamanya 🙏\n"
-             . "Salam, Pengelola Kos {$lokasi}";
+            . "Kami dari pengelola kos *{$lokasi}* ingin mengingatkan bahwa tagihan kos Anda:\n\n"
+            . "📍 Lokasi: *{$lokasi}*\n"
+            . "🏠 Kamar: *{$nomorKamar}*\n"
+            . "💰 Tagihan: *Rp {$tagihan}*\n"
+            . "📅 Jatuh Tempo: *{$jatuhTempo}*\n\n"
+            . "Mohon segera melakukan pembayaran agar tidak terjadi keterlambatan.\n\n"
+            . "Terima kasih atas kerjasamanya 🙏\n"
+            . "Salam, Pengelola Kos {$lokasi}";
     }
 
     /**
@@ -201,7 +203,7 @@ class ReminderResource extends Resource
         $phone = preg_replace('/[^0-9]/', '', $phone); // strip non-digits
         $phone = preg_replace('/^0/', '62', $phone);    // 081xxx → 6281xxx
 
-        $message = urlencode(self::buildWhatsAppMessage($record));
+        $message = urlencode(string: self::buildWhatsAppMessage($record));
 
         return "https://api.whatsapp.com/send?phone={$phone}&text={$message}";
     }
@@ -214,9 +216,9 @@ class ReminderResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListReminders::route('/'),
+            'index' => Pages\ListReminders::route('/'),
             'create' => Pages\CreateReminder::route('/create'),
-            'edit'   => Pages\EditReminder::route('/{record}/edit'),
+            'edit' => Pages\EditReminder::route('/{record}/edit'),
         ];
     }
 }
