@@ -12,21 +12,23 @@ return new class extends Migration {
         // The old design stored id_transaksi on tempat_kos.
         // We reverse this: find which tempat_kos each transaksi belongs to.
         DB::statement('
-            UPDATE transaksi_kos tk
-            JOIN tempat_kos tkos ON tkos.id_transaksi = tk.id
-            SET tk.id_tempat_kos = tkos.id
+                UPDATE transaksi_kos tk
+                SET id_tempat_kos = tkos.id
+                FROM tempat_kos tkos
+                WHERE tkos.id_transaksi = tk.id
         ');
 
         // STEP 2: Populate tempat_kos.tgl_jatuh_tempo from latest periode_selesai
         DB::statement('
-            UPDATE tempat_kos tkos
-            JOIN (
-                SELECT id_tempat_kos, MAX(periode_selesai) AS latest_selesai
-                FROM transaksi_kos
-                WHERE id_tempat_kos IS NOT NULL
-                GROUP BY id_tempat_kos
-            ) latest ON latest.id_tempat_kos = tkos.id
-            SET tkos.tgl_jatuh_tempo = latest.latest_selesai
+     UPDATE tempat_kos tkos
+    SET tgl_jatuh_tempo = latest.latest_selesai
+    FROM (
+        SELECT id_tempat_kos, MAX(periode_selesai) AS latest_selesai
+        FROM transaksi_kos
+        WHERE id_tempat_kos IS NOT NULL
+        GROUP BY id_tempat_kos
+    ) latest
+    WHERE latest.id_tempat_kos = tkos.id
         ');
 
         // STEP 3: Populate tempat_kos.status based on id_penyewa
