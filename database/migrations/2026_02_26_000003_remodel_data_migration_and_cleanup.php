@@ -12,10 +12,16 @@ return new class extends Migration {
         // The old design stored id_transaksi on tempat_kos.
         // We reverse this: find which tempat_kos each transaksi belongs to.
         DB::statement('
-                UPDATE transaksi_kos tk
-                SET id_tempat_kos = tkos.id
-                FROM tempat_kos tkos
-                WHERE tkos.id_transaksi = tk.id
+    UPDATE transaksi_kos
+    SET id_tempat_kos = (
+        SELECT id FROM tempat_kos
+        WHERE tempat_kos.id_transaksi = transaksi_kos.id
+        LIMIT 1
+    )
+    WHERE EXISTS (
+        SELECT 1 FROM tempat_kos
+        WHERE tempat_kos.id_transaksi = transaksi_kos.id
+    )
         ');
 
         // STEP 2: Populate tempat_kos.tgl_jatuh_tempo from latest periode_selesai
