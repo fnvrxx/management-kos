@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             UserSeeder::class,              // 0. Admin user
+            DemoUserSeeder::class,
             PenyewaSeeder::class,           // 1. Tenants (no dependencies)
             TempatKosSeeder::class,         // 2. Rooms (depends on penyewa)
             TransaksiKosSeeder::class,      // 3. Transactions (depends on penyewa + tempat_kos)

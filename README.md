@@ -7,6 +7,22 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Login demo
+
+Setelah migrasi, jalankan seeder akun demo pada database yang sudah ada:
+
+```bash
+php artisan migrate
+php artisan db:seed --class=DemoUserSeeder
+```
+
+Untuk instalasi baru, `php artisan migrate:fresh --seed` sudah membuat akun demo. Buka `/admin/login` dan gunakan:
+
+- **Username:** `demo`
+- **Password:** `demo12345`
+
+Login juga menerima email untuk akun lama. Akun demo memiliki akses ke panel admin, jadi gunakan database berisi data contoh.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

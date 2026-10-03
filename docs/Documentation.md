@@ -96,8 +96,9 @@ php artisan serve
 
 ### Login Default
 - **URL:** `http://localhost:8000/admin`
-- **Email:** `admin@mail.com`
-- **Password:** `password`
+- **Username demo:** `demo`
+- **Password demo:** `demo12345`
+- Akun admin lama tetap bisa login dengan email `admin@gmail.com` dan password `password` setelah seeding.
 
 ---
 
@@ -303,8 +304,8 @@ tgl_jatuh_tempo = penyewa.start_date + floor(totalPaid / harga) bulan
 
 ### 7.1 Login
 1. Buka browser → ketik `http://localhost:8000/admin`
-2. Email: `admin@mail.com`
-3. Password: `password`
+2. Username: `demo`
+3. Password: `demo12345`
 
 ### 7.2 Menambah Kamar Baru
 1. Klik **Data Master** → **Tempat Kos** di sidebar
